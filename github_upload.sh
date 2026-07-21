@@ -1,20 +1,32 @@
+#!/usr/bin/env bash
+# Safe to run more than once.
+# Prerequisite (one-time, if not already done): gh auth login && gh auth setup-git
+ 
 set -euo pipefail
  
 BACKEND_DIR="/home/ubuntu/projects/Agentic/backend"
 GITHUB_REPO_NAME="agentic_backend"
-VISIBILITY="public"
 USERNAME="revglen"
+REMOTE_URL="https://github.com/$USERNAME/$GITHUB_REPO_NAME.git"
  
 cd "$BACKEND_DIR"
-
+ 
 git config --global user.email "revglen@gmail.com"
 git config --global user.name "revglen"
  
-git init
-git branch -M main
-git add .
-git commit -m "Initial backend commit"
+if [ ! -d .git ]; then
+  git init
+  git branch -M main
+fi
  
-#gh repo create "$GITHUB_REPO_NAME" --"$VISIBILITY" --source=. --remote=origin --push
-git remote add origin https://github.com/$USERNAME/$GITHUB_REPO_NAME.git
+git add .
+git commit -m "Update backend" || echo "Nothing new to commit"
+ 
+if git remote get-url origin >/dev/null 2>&1; then
+  git remote set-url origin "$REMOTE_URL"
+else
+  git remote add origin "$REMOTE_URL"
+fi
+ 
 git push -u origin main
+ 
