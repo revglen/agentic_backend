@@ -13,6 +13,7 @@ Raw OpenAPI schema:                http://localhost:8000/openapi.json
 """
 import os
 import numpy as np
+import gradio as gr
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -97,7 +98,7 @@ Errors are always JSON with an `error` category and a human-readable
 never leaks a raw stack trace to the client.
 """
 
-app = FastAPI(
+fast_app = FastAPI(
     title="Mumbai Redevelopment AI",
     description=API_DESCRIPTION,
     version="1.0.0",
@@ -129,7 +130,7 @@ app = FastAPI(
 )
 
 
-@app.exception_handler(RequestValidationError)
+@fast_app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """Malformed / missing request body fields (Pydantic validation)."""
     logger.warning("Validation error on %s %s: %s", request.method, request.url.path, exc.errors())
@@ -142,7 +143,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         },
     )
 
-@app.exception_handler(StarletteHTTPException)
+@fast_app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     """Handles HTTPException raised deliberately anywhere in the app
     (e.g. router endpoints), including 404s for unknown routes."""
@@ -152,29 +153,29 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
         content={"error": "http_error", "message": exc.detail},
     )
 
-@app.exception_handler(Exception)
+@fast_app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
-     logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
+    logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
     return JSONResponse(
         status_code=500,
         content={
             "error": "internal_server_error",
             "message": "Something went wrong while processing your request. Please try again.",
         },
-    )
+)
 
-app.include_router(redevelopment_router)
-app.include_router(ingestion_router)
+fast_app.include_router(redevelopment_router)
+fast_app.include_router(ingestion_router)
 
 # Allow the Streamlit frontend (different origin) to call this API.
-app.add_middleware(
+fast_app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # tighten this to your Streamlit Cloud URL in production
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-@app.get(
+@fast_app.get(
     "/health",
     tags=["health"],
     summary="Health check",
@@ -183,6 +184,15 @@ app.add_middleware(
 )
 def health():
     return {"status": "ok"}
+
+with gr.Blocks() as gradio_ui:
+    gr.Markdown("# My FastAPI + Gradio App")
+    greet = gr.Interface(fn=lambda name: f"Hello {name}!", inputs="text", outputs="text")
+
+# --- 3. Mount Gradio on FastAPI ---
+# This makes the Gradio UI available at the root path "/"
+app = gr.mount_gradio_app(fast_app, gradio_ui, path="/")
+
 
 if __name__ == "__main__":
     uvicorn.run(
