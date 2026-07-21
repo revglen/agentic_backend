@@ -12,7 +12,8 @@ fi
 BACKEND_DIR="/home/ubuntu/projects/Agentic/backend"
 GITHUB_REPO_NAME="agentic_backend"
 USERNAME="revglen"
-REMOTE_URL="https://github.com/$USERNAME/$GITHUB_REPO_NAME.git"
+#REMOTE_URL="https://github.com/$USERNAME/$GITHUB_REPO_NAME.git"
+REMOTE_URL="https://$USERNAME:$GITHUB_TOKEN@github.com/$USERNAME/$GITHUB_REPO_NAME.git"
  
 cd "$BACKEND_DIR"
  
