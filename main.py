@@ -189,10 +189,8 @@ with gr.Blocks() as gradio_ui:
     gr.Markdown("# My FastAPI + Gradio App")
     greet = gr.Interface(fn=lambda name: f"Hello {name}!", inputs="text", outputs="text")
 
-# --- 3. Mount Gradio on FastAPI ---
-# This makes the Gradio UI available at the root path "/"
+#Mount Gradio on FastAPI
 app = gr.mount_gradio_app(fast_app, gradio_ui, path="/")
-
 
 if __name__ == "__main__":
     uvicorn.run(
