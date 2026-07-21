@@ -6,6 +6,7 @@ set -euo pipefail
 
 if [ -f ../.env ]; then
   export $(cat ../.env | grep -v '^#' | xargs)
+  echo "The Environment variables have been set"
 fi
  
 BACKEND_DIR="/home/ubuntu/projects/Agentic/backend"
