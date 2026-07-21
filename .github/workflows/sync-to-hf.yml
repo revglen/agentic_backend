@@ -1,3 +1,4 @@
+# This sync will push the code from github to spaces
 name: Sync to Hugging Face Space
 
 on:
@@ -15,4 +16,4 @@ jobs:
           github_repo_id: ${{ github.repository }}
           huggingface_repo_id: JohnFernandes/agentic_backend
           hf_token: ${{ secrets.HF_TOKEN }}
-          space_sdk: docker
+          #space_sdk: docker
