@@ -3,6 +3,10 @@
 # Prerequisite (one-time, if not already done): gh auth login && gh auth setup-git
  
 set -euo pipefail
+
+if [ -f ../.env ]; then
+  export $(cat ../.env | grep -v '^#' | xargs)
+fi
  
 BACKEND_DIR="/home/ubuntu/projects/Agentic/backend"
 GITHUB_REPO_NAME="agentic_backend"
