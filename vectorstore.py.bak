@@ -1,0 +1,145 @@
+"""
+Vector store layer backed by Chroma (local, persisted to disk).
+Handles ingesting PDFs/text into the store and returning a retriever.
+"""
+
+from pathlib import Path
+from typing import List, Optional
+
+from langchain_community.document_loaders import PyPDFLoader, TextLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain_core.documents import Document
+
+from backend import config
+
+class VectorStore:
+  _INDEX_DIR = Path(config.VECTOR_INDEX_DIR)
+  _INDEX_NAME = "faiss_index" 
+  _INDEX_NAMES = {"docs": "faiss_index", "web_cache": "web_cache_index"}
+
+  def __init__(self):
+    self._embeddings = None
+    self._vectorStore: Optional[FAISS] = None
+    self._stores: dict = {"docs": None, "web_cache": None}
+
+  def get_embeddings(self):
+    if self.embeddings is None:
+      self._embeddings = HuggingFaceEmbeddings(model_name=config.EMBEDDING_MODEL)
+  
+    return self.embeddings
+  
+  def _index_files_exist(self) -> bool:
+    return (VectorStore._INDEX_DIR  / f"{VectorStore._INDEX_NAME}.faiss").exists() and (
+        VectorStore._INDEX_DIR / f"{VectorStore._INDEX_NAME}.pkl"
+    ).exists()
+
+  def get_vectorstore(self) -> Optional[FAISS]:
+    if self._vectorStore is None and self._index_files_exist():
+      self._vectorStore=FAISS.load_local(
+        str(VectorStore._INDEX_DUR),
+        self.get_embedded(),
+        index_name=VectorStore._INDEX_NAME,
+        allow_dangerous_deserialization = True
+      )
+
+    return self._vectorStore
+  
+  def _save(self):
+    VectorStore._INDEX_DIR.mkdir(parents=True, exist_ok=True)
+    self._vectorstore.save_local(
+          str(VectorStore._INDEX_DIR), 
+          index_name=VectorStore._INDEX_NAME)
+
+
+  def _add_and_save(self, store_key: str, chunks: List[Document]) -> None:
+    existing = _get_store(store_key)
+    if existing is None:
+        _stores[store_key] = FAISS.from_documents(chunks, get_embeddings())
+    else:
+        existing.add_documents(chunks)
+        _stores[store_key] = existing
+
+    VectorStore._INDEX_DIR.mkdir(parents=True, exist_ok=True)
+    _stores[store_key].save_local(str(VectorStore._INDEX_DIR), index_name=_INDEX_NAMES[store_key])
+
+    
+  def _split(self, docs: List[Document]) -> List[Document]:
+    splitter = RecursiveCharacterTextSplitter(
+              chunk_size = config.CHUNK_SIZE,
+              chunk_overlap = config.CHINK_OVERLAP
+            )
+
+    return splitter.split_documents(docs)
+
+  def format_docs(self, docs: List[Document]) -> str:
+    parts=[]
+    for d in docs:
+      src = d.metadata.get("Source_file", "unknown")
+      label = d.metadata.get("lebal", "")
+      tag = f"{src}" + (f" [{label}]" if label else "")
+      parts.append(f"--- {tag} ---\n{d.page_content}")
+    
+    return "\n\n".join(parts)
+
+  def get_retriever(self, k: int = None, label_filter:str=None):
+    vs = self.get_vectorstore()
+    if vs is None:
+      return None
+
+    search_kwargs = {"k": k or config.RETRIEVER_K}
+    if label_filter :
+      search_kwargs["filter"]={"label":label_filter}
+  
+    return vs.as_retriever(search_kwargs=search_kwargs)  
+
+  def ingest_file(self, file_path: str, doc_label: str = "") -> int:
+    path = Path(file_path)
+    if path.suffix.lower() == ".pdf":
+      loader = PyPDFLoader(str(path))
+    else:
+      loader = TextLoader(str(path), encoding="utf-8")
+
+    raw_docs = loader.load()
+    for d in raw_docs:
+      d.metadata["source_file"]=path.name
+      if doc_label:
+        d.metadata["label"]=doc_label
+
+    chunks = self._split(raw_docs)
+    existing = self.get_vectorstore()
+
+    if existing is None:
+      self._vectorstore = FAISS.from_document(chunks, self.get_embeddings())
+    else:
+      existing.add_documents(chunks)
+      self._vectorstore = existing
+
+    self._save()
+    return len(chunks)      
+
+# ---------------------------------------------------------------------------
+# Web search results cache index
+# ---------------------------------------------------------------------------
+
+  def ingest_web_cache(self,question: str, content: str) -> int:
+      """
+      Stores a web search result, tagged with the question that produced it, so
+      a future similar question can reuse it without hitting the web again.
+      Returns the number of chunks added.
+      """
+      doc = Document(
+          page_content=content,
+          metadata={"source_file": "web_search_cache", "cached_question": question},
+      )
+      chunks = self._split([doc])
+      for c in chunks:
+          c.metadata["cached_question"] = question
+      _add_and_save("web_cache", chunks)
+      return len(chunks)
+
+
+  def get_web_cache_retriever(self, k: int = None):
+      """Returns a retriever over cached web results, or None if the cache is empty."""
+      return self._retriever_for("web_cache", k or config.CACHE_RETRIEVER_K)
